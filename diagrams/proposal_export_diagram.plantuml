@@ -1,0 +1,91 @@
+@startuml
+title FILE MANAGER\n<color:blue>EXPORT FLOW </color>
+actor "Customer / \n External System" as actor1
+participant "Customer API \n (Export File)" as exportApi
+participant "Relational DB" as database
+participant "Message Broker" as messageBroker
+participant "Worker \n File Generator \n EXPORT" as exportProcessor
+participant "File Storage" as storage
+participant "Worker \n Mailer Service" as mailerService
+participant "Outbox Worker Relay\n (scheduled job) \n EXPORT" as jobOutBoxExport
+
+' -------- EXPORT REQUEST
+actor1 -> exportApi: [POST] /api/company/{companyId}/file-export\n{ format, columns[], domain }
+activate exportApi
+
+activate database
+exportApi-> exportApi: generates exportId: UUID
+exportApi -> database:  persistes (exportId, state: PENDING, ...) \n Control tables (OUTBOX / EXPORT_CONTROL)
+activate messageBroker
+exportApi -> messageBroker: publishes event "export"  OPTMISTIC strategy\n(exportId, companyId, domain, format, columns[])
+exportApi -> actor1: StatusCode: 202 Accepted + {exportId}
+messageBroker-> exportApi: acknowledge callback
+exportApi-> database: persistes\n (OUTBOX STATUS=DELETED)
+deactivate exportApi
+
+
+' -------- PROCESSING
+messageBroker -> exportProcessor: consumes "export" event
+activate exportProcessor
+deactivate messageBroker
+
+exportProcessor -> database: updates/insert control tables (state: COMPLETED/ERROR, ...)
+
+
+exportProcessor -> database: queries CUSTOMERS\nWHERE company_id = ? AND domain = ?
+database -> exportProcessor: returns matching rows
+
+exportProcessor -> exportProcessor: selects & orders requested columns\nrenders file (CSV / TXT / XLSX)
+
+activate storage
+exportProcessor -> storage: stores rendered file\n(key: exportId, content)
+deactivate storage
+
+exportProcessor -> database: updates control table\n (state: COMPLETED, exportId, ...)
+activate messageBroker
+exportProcessor -> messageBroker: publishes event "results" (exportId, state...)
+deactivate messageBroker
+deactivate exportProcessor
+
+' -------- Relay
+activate jobOutBoxExport
+jobOutBoxExport -> database: retrieves (Outbox table control)
+database -> jobOutBoxExport: sends PENDING records
+activate messageBroker
+jobOutBoxExport -> messageBroker: publishes event "export" \n (exportId, state...)
+messageBroker-> jobOutBoxExport: acknowledge callback
+jobOutBoxExport-> database: persistes\n (OUTBOX=SENT)
+deactivate jobOutBoxExport
+
+
+' -------- POLLING
+actor1 -> exportApi: [GET] /api/company/{companyId}/file-export/{exportId}/status
+activate exportApi
+exportApi -> database: queries EXPORT_CONTROL by exportId
+database -> exportApi: returns { exportId, state: PENDING | PROCESSING | COMPLETED | ERROR }
+exportApi -> actor1: 200 OK + { exportId, state }
+deactivate exportApi
+
+
+' -------- MAILER
+activate mailerService
+messageBroker -> mailerService: consumes "results" events
+deactivate messageBroker
+mailerService -> actor1: send mail {exportId, status, /download uri}
+deactivate mailerService
+
+
+
+' -------- DOWNLOAD
+actor1 -> exportApi: [GET] /api/company/{companyId}/file-export/{exportId}/download
+activate exportApi
+exportApi -> database: queries control table
+database -> exportApi: returns state
+deactivate database
+activate storage
+exportApi -> storage: retrieves rendered file by exportId (if COMPLETED)
+storage -> exportApi: returns file bytes
+deactivate storage
+exportApi -> actor1: 200 OK\nContent-Disposition: attachment; filename="export_{exportId}.{ext}"\nContent-Type: text/csv | text/plain | application/vnd.openxmlformats...\n<file bytes>
+deactivate exportApi
+@enduml

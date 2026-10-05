@@ -1,0 +1,680 @@
+type: collection.insomnia.rest/5.0
+schema_version: "5.1"
+name: File Manager API
+meta:
+  id: wrk_45d7ab9aeaf248ca9ba4d33a8620ae7d
+  created: 1789686887903
+  modified: 1789686887903
+  description: ""
+collection:
+  - name: File Import
+    meta:
+      id: fld_0727a574d6f5406ab8f50fcdffcc367d
+      created: 1700000000000
+      modified: 1789694755906
+      sortKey: -1000
+      description: POST /api/company/{companyId}/file-import and GET .../status
+    children:
+      - url: "{{ _.base_url }}/api/company/{{ _.company_id }}/file-import"
+        name: 4 - Import CSV - unsupported domain (expect 422)
+        meta:
+          id: req_91d032c1f20046bc94d498940cd61944
+          created: 1700000000000
+          modified: 1789693731404
+          isPrivate: false
+          description: domain=PRODUCT is not yet supported by ImportService. Expects 422.
+          sortKey: -800
+        method: POST
+        body:
+          mimeType: multipart/form-data
+          params:
+            - name: file
+              value: ""
+              description: Pick any local CSV file
+              fileName: C:\myfolder\customers_1000_OK.csv
+              type: file
+            - name: domain
+              value: PRODUCT
+              description: ""
+        scripts:
+          afterResponse: >-
+            insomnia.test('status is 422 Unprocessable Entity', () => {
+              insomnia.expect(insomnia.response.status).to.equal("Unprocessable Entity");
+            });
+
+
+            insomnia.test('error message mentions unsupported domain', () => {
+              insomnia.expect(insomnia.response.body.toString()).to.include('Domain not supported');
+            });
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/company/{{ _.company_id
+          }}/file-import/00000000-0000-0000-0000-000000000000/status"
+        name: 5 - Get Import Status - unknown id (expect 400)
+        meta:
+          id: req_de834f6595724fbaaf416e25f2eee102
+          created: 1700000000000
+          modified: 1789693650517
+          isPrivate: false
+          description: Random UUID that was never created. Expects 400.
+          sortKey: -700
+        method: GET
+        scripts:
+          afterResponse: |-
+            insomnia.test('status is 400 Bad Request', () => {
+              insomnia.expect(insomnia.response.status).to.equal("Bad Request");
+            });
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - name: Happy Path
+        meta:
+          id: fld_bb30f1ec54c34c9880a8e0885f9390ba
+          created: 1789691892289
+          modified: 1789694755907
+          sortKey: -1789691892289
+          description: ""
+        children:
+          - url: "{{ _.base_url }}/api/company/{{ _.company_id }}/file-import"
+            name: 1 - Import CSV (happy path)
+            meta:
+              id: req_72a6e642bd6d44b3a9c05ea89a09681a
+              created: 1700000000000
+              modified: 1789694723085
+              isPrivate: false
+              description: Uploads a CSV for domain=CUSTOMER. Expects 202 + PENDING state.
+                Pick a local CSV file for the 'file' field before sending.
+                Stores importId for the next requests.
+              sortKey: -1789691920456
+            method: POST
+            body:
+              mimeType: multipart/form-data
+              params:
+                - name: file
+                  value: ""
+                  description: Pick any local CSV file
+                  fileName: C:\myfolder\customers_1000_OK.csv
+                  type: file
+                - name: domain
+                  value: CUSTOMER
+                  description: ""
+            scripts:
+              preRequest: >-
+                if (!insomnia.environment.get('company_id')) {
+                  insomnia.environment.set('company_id', Math.floor(Math.random() * 1000000) + 9000000);
+                }
+              afterResponse: >-
+                const body = insomnia.response.json();
+
+
+                insomnia.test('status is 202 Accepted', () => {
+                  insomnia.expect(insomnia.response.status).to.equal("Accepted");
+                });
+
+
+                insomnia.test('response has PENDING state', () => {
+                  insomnia.expect(body.state).to.equal('PENDING');
+                });
+
+
+                insomnia.test('response has an importId', () => {
+                  insomnia.expect(body.importId).to.be.a('string');
+                });
+
+
+                insomnia.environment.set('import_id', body.importId);
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: "{{ _.base_url }}/api/company/{{ _.company_id }}/file-import/{{ _.import_id
+              }}/status"
+            name: 2 - Get Import Status
+            meta:
+              id: req_998c601a5df5443d818a086c1bb7d0ab
+              created: 1700000000000
+              modified: 1789693848954
+              isPrivate: false
+              description: Polls the status of the import created by request 1.
+              sortKey: -1789691920356
+            method: GET
+            scripts:
+              afterResponse: >-
+                const body = insomnia.response.json();
+
+
+                insomnia.test('status is 200 OK', () => {
+                  insomnia.expect(insomnia.response.status).to.equal("OK");
+                });
+
+
+                insomnia.test('importId matches the requested id', () => {
+                  insomnia.expect(body.importId).to.equal(insomnia.environment.get('import_id'));
+                });
+
+
+                insomnia.test('state is a known ImportState', () => {
+                  insomnia.expect(['PENDING', 'PROCESSING', 'COMPLETED', 'ERROR']).to.include(body.state);
+                });
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: "{{ _.base_url }}/api/company/{{ _.company_id }}/file-import/{{ _.import_id
+              }}/status"
+            name: 3 - Get Import Status - COMPLETED (1000 records)
+            meta:
+              id: req_54813cd4323f40ab85d4d131a8613319
+              created: 1789691454322
+              modified: 1789693852356
+              isPrivate: false
+              description: Random UUID that was never created. Expects 400.
+              sortKey: -1789691920256
+            method: GET
+            scripts:
+              afterResponse: >-
+                const body = insomnia.response.json();
+
+
+                insomnia.test('status is 200 OK', () => {
+                  insomnia.expect(insomnia.response.status).to.equal("OK");
+                });
+
+
+                insomnia.test('importId matches the requested id', () => {
+                  insomnia.expect(body.importId).to.equal(insomnia.environment.get('import_id'));
+                });
+
+
+                insomnia.test('state is COMPLETED', () => {
+                  insomnia.expect(body.state).to.equal('COMPLETED');
+                });
+
+
+                insomnia.test('all details have type INFO', () => {
+                  const types = (body.details || []).map((d) => d.type);
+                  insomnia.expect(types.every((type) => type === 'INFO')).to.equal(true);
+                });
+
+
+                insomnia.test('details contain the finished summary message', ()
+                => {
+                  const descriptions = (body.details || []).map((d) => d.description);
+                  insomnia.expect(descriptions).to.include('FINISHED Import file with status COMPLETED. Written=1000, Skipped=0');
+                });
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+      - name: CSV With Some Warnings (Company 5000)
+        meta:
+          id: fld_33406b5d6c6a42de958cd3488b0c6882
+          created: 1789692050260
+          modified: 1789694679491
+          sortKey: -600
+          description: ""
+        children:
+          - url: "{{ _.base_url }}/api/company/5000/file-import"
+            name: 1 - Import CSV (records with Warnings)
+            meta:
+              id: req_cd5c7e836c2a459b894b72709f3f4655
+              created: 1789692022542
+              modified: 1789693753398
+              isPrivate: false
+              description: Uploads a CSV for domain=CUSTOMER. Expects 202 + PENDING state.
+                Pick a local CSV file for the 'file' field before sending.
+                Stores importId for the next requests.
+              sortKey: -1789692062014
+            method: POST
+            body:
+              mimeType: multipart/form-data
+              params:
+                - name: file
+                  value: ""
+                  description: Pick any local CSV file
+                  fileName: C:\myfolder\customers_2Errors.csv
+                  type: file
+                - name: domain
+                  value: CUSTOMER
+                  description: ""
+            scripts:
+              preRequest: >-
+                if (!insomnia.environment.get('company_id')) {
+                  insomnia.environment.set('company_id', Math.floor(Math.random() * 1000000) + 9000000);
+                }
+              afterResponse: >-
+                const body = insomnia.response.json();
+
+
+                insomnia.test('status is 202 Accepted', () => {
+                  insomnia.expect(insomnia.response.status).to.equal("Accepted");
+                });
+
+
+                insomnia.test('response has PENDING state', () => {
+                  insomnia.expect(body.state).to.equal('PENDING');
+                });
+
+
+                insomnia.test('response has an importId', () => {
+                  insomnia.expect(body.importId).to.be.a('string');
+                });
+
+
+                insomnia.environment.set('import_id', body.importId);
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: "{{ _.base_url }}/api/company/5000/file-import/{{ _.import_id }}/status"
+            name: 2 - Get Import Status - COMPLETED (2 Warnings)
+            meta:
+              id: req_27856968c49549669927220dd84c3f79
+              created: 1789692216930
+              modified: 1789693764538
+              isPrivate: false
+              description: Random UUID that was never created. Expects 400.
+              sortKey: -1789692061914
+            method: GET
+            scripts:
+              afterResponse: >-
+                const body = insomnia.response.json();
+
+
+                insomnia.test('status is 200 OK', () => {
+                  insomnia.expect(insomnia.response.status).to.equal("OK");
+                });
+
+
+                insomnia.test('importId matches the requested id', () => {
+                  insomnia.expect(body.importId).to.equal(insomnia.environment.get('import_id'));
+                });
+
+
+                insomnia.test('state is COMPLETED', () => {
+                  insomnia.expect(body.state).to.equal('COMPLETED');
+                });
+
+
+                insomnia.test('details contain the blank line warning', () => {
+                  const descriptions = (body.details || []).map((d) => d.description);
+                  insomnia.expect(descriptions.some((d) => d.includes('Blank line detected at record 3 in file'))).to.equal(true);
+                });
+
+
+                insomnia.test('has 2 records with type WARNING_SKIP', () => {
+                  const warningSkipCount = (body.details || []).filter((d) => d.type === 'WARNING_SKIP').length;
+                  insomnia.expect(warningSkipCount).to.equal(2);
+                });
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+  - name: File Export
+    meta:
+      id: fld_cbfd3e1d4125444490b3f80c5874f6a0
+      created: 1700000000000
+      modified: 1789694580712
+      sortKey: -900
+      description: POST /api/company/{companyId}/file-export, GET .../status and GET
+        .../download
+    children:
+      - url: "{{ _.base_url }}/api/company/{{ _.company_id
+          }}/file-export/00000000-0000-0000-0000-000000000000/status"
+        name: 5 - Get Export Status - unknown id (expect 400)
+        meta:
+          id: req_403df9466d444604ae4652d43d955f40
+          created: 1700000000000
+          modified: 1789694580393
+          isPrivate: false
+          description: Random UUID that was never created. Expects 400.
+          sortKey: -700
+        method: GET
+        scripts:
+          afterResponse: |-
+            insomnia.test('status is 400 Bad Request', () => {
+              insomnia.expect(insomnia.response.status).to.equal("Bad Request");
+            });
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/company/{{ _.company_id }}/file-export/{{ _.export_id
+          }}/download"
+        name: 3 - Download Export - not completed yet (expect 422) (REQUEST WITH
+          processor-worker down)
+        meta:
+          id: req_6c0f043d393d4ec7b381d2742f36674b
+          created: 1700000000000
+          modified: 1789694575481
+          isPrivate: false
+          description: The export from request 1 is still PENDING (nothing in this API
+            flips it to COMPLETED - that's done by the separate
+            file-processor-worker service). Expects 422.
+          sortKey: -800
+        method: GET
+        scripts:
+          afterResponse: >-
+            insomnia.test('status is 422 Unprocessable Entity', () => {
+              insomnia.expect(insomnia.response.status).to.equal("Unprocessable Entity");
+            });
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/company/{{ _.company_id }}/file-export/{{ _.export_id
+          }}/status"
+        name: 2 - Get Export Status
+        meta:
+          id: req_81f278d1d7ed4acfb34fdb3ca336b4a4
+          created: 1700000000000
+          modified: 1789694572440
+          isPrivate: false
+          description: Polls the status of the export created by request 1.
+          sortKey: -900
+        method: GET
+        scripts:
+          afterResponse: >-
+            const body = insomnia.response.json();
+
+
+            insomnia.test('status is 200 OK', () => {
+              insomnia.expect(insomnia.response.status).to.equal("OK");
+            });
+
+
+            insomnia.test('exportId matches the requested id', () => {
+              insomnia.expect(body.exportId).to.equal(insomnia.environment.get('export_id'));
+            });
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - name: CSV File
+        meta:
+          id: fld_7d47e8f54c284eeb9fc9ee3bc9cd3907
+          created: 1789694069824
+          modified: 1789694563003
+          sortKey: -1789694069824
+          description: ""
+        children:
+          - url: "{{ _.base_url }}/api/company/{{ _.company_id }}/file-export"
+            name: 1 - Request Export (happy path CSV)
+            meta:
+              id: req_e87e1d9054f44cccb02fa507e602f9ca
+              created: 1700000000000
+              modified: 1789694180430
+              isPrivate: false
+              description: Creates an export for domain=CUSTOMER, format=CSV. Expects 202 +
+                PENDING state. Stores exportId for the next requests.
+              sortKey: -1789694074302
+            method: POST
+            body:
+              mimeType: application/json
+              text: |-
+                {
+                  "format": "CSV",
+                  "columns": ["id", "name", "email"],
+                  "domain": "CUSTOMER",
+                  "customerEmail": "customer@example.com"
+                }
+            headers:
+              - name: Content-Type
+                value: application/json
+            scripts:
+              preRequest: >-
+                if (!insomnia.environment.get('company_id')) {
+                  insomnia.environment.set('company_id', Math.floor(Math.random() * 1000000) + 9000000);
+                }
+              afterResponse: >-
+                const body = insomnia.response.json();
+
+
+                insomnia.test('status is 202 Accepted', () => {
+                  insomnia.expect(insomnia.response.status).to.equal("Accepted");
+                });
+
+
+                insomnia.test('response has PENDING state', () => {
+                  insomnia.expect(body.state).to.equal('PENDING');
+                });
+
+
+                insomnia.test('response has an exportId', () => {
+                  insomnia.expect(body.exportId).to.be.a('string');
+                });
+
+
+                insomnia.environment.set('export_id', body.exportId);
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - url: "{{ _.base_url }}/api/company/{{ _.company_id }}/file-export/{{ _.export_id
+              }}/download"
+            name: 2 - Download Export - COMPLETED (1000 records)
+            meta:
+              id: req_533de61cc0e14d29aa1499041c33496c
+              created: 1789693014502
+              modified: 1789694387217
+              isPrivate: false
+              description: The export from request 1 is still PENDING (nothing in this API
+                flips it to COMPLETED - that's done by the separate
+                file-processor-worker service). Expects 422.
+              sortKey: -1789694074202
+            method: GET
+            scripts:
+              afterResponse: >-
+                insomnia.test('status is 200 OK', () => {
+                  insomnia.expect(insomnia.response.status).to.equal("OK");
+                });
+
+
+                insomnia.test('content-type is text/csv', () => {
+                  const contentType = insomnia.response.headers.get('Content-Type') || '';
+                  insomnia.expect(contentType).to.include('text/csv');
+                });
+
+
+                insomnia.test('content-disposition is an export attachment', ()
+                => {
+                  const disposition = insomnia.response.headers.get('Content-Disposition') || '';
+                  insomnia.expect(disposition).to.include('attachment');
+                  insomnia.expect(disposition).to.include('export_');
+                });
+
+
+                const csvText = insomnia.response.body.toString();
+
+                const lines = csvText.split(/\r?\n/).filter((line) =>
+                line.length > 0);
+
+                const dataRecordCount = lines.length - 1; // minus the header
+                row
+
+
+                insomnia.test('CSV body has 1000 data records', () => {
+                  insomnia.expect(dataRecordCount).to.equal(1000);
+                });
+            settings:
+              renderRequestBody: true
+              encodeUrl: true
+              followRedirects: global
+              cookies:
+                send: true
+                store: true
+              rebuildPath: true
+          - name: XLSX File
+            meta:
+              id: fld_d544c1a42c2c4ef880bb81b7f2819947
+              created: 1789694144074
+              modified: 1789694563003
+              sortKey: -1789694074102
+              description: ""
+            children:
+              - url: "{{ _.base_url }}/api/company/{{ _.company_id }}/file-export"
+                name: 1 - Request Export (happy path XLSX)
+                meta:
+                  id: req_7575938907074e38960f17fb685a4a8d
+                  created: 1789694161944
+                  modified: 1789694236350
+                  isPrivate: false
+                  description: Creates an export for domain=CUSTOMER, format=CSV. Expects 202 +
+                    PENDING state. Stores exportId for the next requests.
+                  sortKey: -1789694165709
+                method: POST
+                body:
+                  mimeType: application/json
+                  text: |-
+                    {
+                      "format": "XLSX",
+                      "columns": ["name"],
+                      "domain": "CUSTOMER",
+                      "customerEmail": "customer@example.com"
+                    }
+                headers:
+                  - name: Content-Type
+                    value: application/json
+                scripts:
+                  preRequest: >-
+                    if (!insomnia.environment.get('company_id')) {
+                      insomnia.environment.set('company_id', Math.floor(Math.random() * 1000000) + 9000000);
+                    }
+                  afterResponse: >-
+                    const body = insomnia.response.json();
+
+
+                    insomnia.test('status is 202 Accepted', () => {
+                      insomnia.expect(insomnia.response.status).to.equal("Accepted");
+                    });
+
+
+                    insomnia.test('response has PENDING state', () => {
+                      insomnia.expect(body.state).to.equal('PENDING');
+                    });
+
+
+                    insomnia.test('response has an exportId', () => {
+                      insomnia.expect(body.exportId).to.be.a('string');
+                    });
+
+
+                    insomnia.environment.set('export_id', body.exportId);
+                settings:
+                  renderRequestBody: true
+                  encodeUrl: true
+                  followRedirects: global
+                  cookies:
+                    send: true
+                    store: true
+                  rebuildPath: true
+              - url: "{{ _.base_url }}/api/company/{{ _.company_id }}/file-export/{{ _.export_id
+                  }}/download"
+                name: 2 - Download Export - COMPLETED (size > 0)
+                meta:
+                  id: req_6999025636c2437692e946acad527a9c
+                  created: 1789694192905
+                  modified: 1789694552746
+                  isPrivate: false
+                  description: The export from request 1 is still PENDING (nothing in this API
+                    flips it to COMPLETED - that's done by the separate
+                    file-processor-worker service). Expects 422.
+                  sortKey: -1789694165609
+                method: GET
+                scripts:
+                  afterResponse: >-
+                    insomnia.test('status is 200 OK', () => {
+                      insomnia.expect(insomnia.response.status).to.equal("OK");
+                    });
+
+
+                    insomnia.test('content-type is XLSX', () => {
+                      const contentType = insomnia.response.headers.get('Content-Type') || '';
+                      insomnia.expect(contentType).to.include('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                    });
+
+
+                    insomnia.test('content-disposition is an export attachment',
+                    () => {
+                      const disposition = insomnia.response.headers.get('Content-Disposition') || '';
+                      insomnia.expect(disposition).to.include('attachment');
+                      insomnia.expect(disposition).to.include('export_');
+                    });
+
+
+                    insomnia.test('file size is greater than 0 bytes', () => {
+                      insomnia.expect(insomnia.response.body.length).to.be.greaterThan(0);
+                    });
+                settings:
+                  renderRequestBody: true
+                  encodeUrl: true
+                  followRedirects: global
+                  cookies:
+                    send: true
+                    store: true
+                  rebuildPath: true
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_b22947e9bfd4503d59f9eb1f11e0377ee06934db
+    created: 1789686888189
+    modified: 1789694755903
+environments:
+  name: Base Environment
+  meta:
+    id: env_e6949d7cb6f947e999a6fe3640b64166
+    created: 1700000000000
+    modified: 1789694755904
+    isPrivate: false
+  data:
+    base_url: http://localhost:8080
+    company_id: "2000"
+    import_id: 7b462839-ca01-4e04-9f99-6dcf958fe1a6
+    export_id: ac855794-75ee-4580-8e17-4ac5a20203fd

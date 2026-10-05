@@ -1,0 +1,71 @@
+@startuml
+title FILE MANAGER\n<color:blue>IMPORT FLOW </color>
+
+actor "Customer / \n External System" as actor1 
+participant "Customer API \n (Import File)" as importApi
+participant "File Storage" as storage
+participant "Relational DB" as database
+participant "Message Broker" as messageBroker
+participant "Worker \n File Processor \n IMPORT" as importProcessor
+participant "Worker \n Mailer Service" as mailerService
+participant "Outbox Worker Relay\n (scheduled job) \n IMPORT" as jobOutBox
+
+' -------- IMPORT
+actor1 -> importApi: [POST] /company/{companyId}/file-import \n{ file, domain }
+activate importApi
+activate storage
+importApi-> storage: stores raw file (fileId: UUID; content)
+deactivate storage
+importApi-> database: persistes (UUID, state: PENDING, ...) \n Control tables (OUTBOX / IMPORT_CONTROL)
+activate database
+activate messageBroker
+importApi-> actor1: StatusCode: 202 Accepted + {importId: UUID}
+deactivate importApi
+
+
+
+' -------- PROCESSING
+activate importProcessor
+messageBroker -> importProcessor: consumes "import" events
+deactivate messageBroker
+activate storage
+importProcessor-> storage: retrieves file content
+storage-> importProcessor: sends content file
+importProcessor-> database: persiste processed data (if validation succeed) \n table: CUSTOMERS
+deactivate storage
+importProcessor -> importProcessor: extract & validate each record/column
+importProcessor-> database: updates control table (state: COMPLETED/ERROR, ...)
+activate messageBroker
+importProcessor-> messageBroker: publishes event "results" (UUID, state...)
+deactivate messageBroker
+deactivate importProcessor
+
+' -------- Relay
+activate jobOutBox
+jobOutBox-> database: retrieves (Outbox table control)
+database-> jobOutBox: sends PEDING records
+activate messageBroker
+jobOutBox-> messageBroker: publishes event "import" \n (UUID, state...)
+messageBroker-> jobOutBox: acknowledge callback
+jobOutBox-> database: persistes\n (OUTBOX STATUS=SENT)
+deactivate jobOutBox
+
+
+' -------- MAILER
+messageBroker -> mailerService: consumes "results" events
+activate mailerService
+deactivate messageBroker
+mailerService-> actor1: send mail (Summary of imported File)
+deactivate mailerService
+
+
+' -------- POLLING
+actor1 -> importApi: [GET] /api/company/{companyId}/file-import/{importId}/status
+activate importApi
+importApi -> database: queries IMPORT_CONTROL by importId
+database -> importApi: returns { importId, state: PENDING | PROCESSING | COMPLETED | ERROR }
+deactivate database
+importApi -> actor1: 200 OK + { importId, state }
+deactivate importApi
+
+@enduml

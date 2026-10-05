@@ -1,0 +1,14 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+aws:
+  s3:
+    bucket-name: ${S3_BUCKET:planet-imports}
+    region: ${AWS_REGION:us-east-1}
+
+logging:
+  level:
+    com.planet: INFO
+    org.springframework.batch: INFO

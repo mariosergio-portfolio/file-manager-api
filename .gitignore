@@ -1,0 +1,35 @@
+# Java / Maven
+/target/
+/build/
+out/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+# Spring Boot
+/application-local.properties
+/application-dev.properties
+/application-prod.properties
+.env
+.env.*
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.swp
+*.swo

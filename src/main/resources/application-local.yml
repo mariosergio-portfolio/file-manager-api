@@ -1,0 +1,19 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+
+storage:
+  local:
+    import:
+      base-path: ${STORAGE_LOCAL_PATH}/storage/import
+    export:
+      base-path: ${STORAGE_LOCAL_PATH}/storage/export
+
+
+logging:
+  level:
+    com.planet: DEBUG
+    org.springframework.batch: INFO
+
+STORAGE_LOCAL_PATH: c:/myfolder

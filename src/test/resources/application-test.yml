@@ -1,0 +1,16 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+
+  flyway:
+    enabled: false
+
+  sql:
+    init:
+      mode: always
+
+logging:
+  level:
+    com.planet: DEBUG
